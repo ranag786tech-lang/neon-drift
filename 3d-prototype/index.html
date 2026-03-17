@@ -10,7 +10,7 @@
 
     #canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
 
-    /* ═══════════ START SCREEN ═══════════ */
+    /* START SCREEN */
     #start-screen {
       position: fixed; inset: 0;
       background: linear-gradient(135deg, #050508 0%, #0a0a15 50%, #0d0515 100%);
@@ -52,7 +52,7 @@
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     @keyframes titleGlow { 0%,100% { text-shadow: 0 0 80px rgba(0,240,255,0.5); } 50% { text-shadow: 0 0 120px rgba(0,240,255,0.8), 0 0 200px rgba(0,240,255,0.3); } }
 
-    /* ═══════════ HUD ═══════════ */
+    /* HUD */
     #hud {
       position: fixed; bottom: 30px; left: 30px; z-index: 100;
       color: #00f0ff; font-size: 11px; letter-spacing: 2px;
@@ -91,7 +91,7 @@
     #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
     #crosshair::after { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
 
-    /* ═══════════ AUDIO INDICATOR ═══════════ */
+    /* AUDIO INDICATOR */
     #audio-indicator {
       position: fixed; bottom: 30px; right: 30px; z-index: 100;
       color: rgba(255,255,255,0.3); font-size: 10px; letter-spacing: 2px;
@@ -107,24 +107,37 @@
     #audio-indicator .bar:nth-child(4) { height: 10px; animation-delay: 0.3s; }
     @keyframes audioBar { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(0.4); } }
 
-    /* ═══════════ WEATHER OVERLAY ═══════════ */
+    /* WEATHER OVERLAY */
     #weather-overlay {
       position: fixed; inset: 0; z-index: 50; pointer-events: none;
       background: linear-gradient(to bottom, transparent 60%, rgba(0,10,20,0.3) 100%);
     }
 
-    /* ═══════════ VIGNETTE ═══════════ */
+    /* VIGNETTE */
     #vignette {
       position: fixed; inset: 0; z-index: 49; pointer-events: none;
       background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
     }
 
-    /* ═══════════ LIGHTNING FLASH ═══════════ */
+    /* LIGHTNING FLASH */
     #lightning {
       position: fixed; inset: 0; z-index: 48; pointer-events: none;
       background: rgba(150,180,255,0.15); opacity: 0; transition: opacity 0.05s;
     }
     #lightning.flash { opacity: 1; }
+
+    /* FLOW STATE BAR */
+    #flow-bar {
+      position: fixed; bottom: 200px; left: 30px; z-index: 100;
+      width: 150px; height: 4px; background: rgba(255,255,255,0.1);
+      opacity: 0; transition: opacity 0.5s;
+    }
+    #flow-bar.visible { opacity: 1; }
+    #flow-fill {
+      height: 100%; width: 0%; background: linear-gradient(90deg, #00f0ff, #ff2d6b);
+      transition: width 0.2s ease;
+      box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    }
   </style>
 </head>
 <body>
@@ -177,6 +190,7 @@
     </div>
     <span>AUDIO</span>
   </div>
+  <div id="flow-bar"><div id="flow-fill"></div></div>
 
   <!-- CANVAS -->
   <div id="canvas-container"></div>
@@ -185,9 +199,52 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
     // ═══════════════════════════════════════════════════════════════════════
-    // NEON DRIFT - NEO ARCADIA ENHANCED PROTOTYPE
-    // Features: Rain, Lightning, Enhanced Lighting, Sound, Wet Reflections
+    // NEON DRIFT - NEO ARCADIA ENHANCED PROTOTYPE v2.0
+    // Features: Rain, Lightning, Enhanced Lighting, Sound, HUD, Full Controls
     // ═══════════════════════════════════════════════════════════════════════
+
+    // ─── AUDIO CONTEXT ─────────────────────────────────────────────────────
+    let audioCtx = null;
+    let isMuted = false;
+    let rainOscillator = null;
+    let rainGain = null;
+
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create rain noise
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      const whiteNoise = audioCtx.createBufferSource();
+      whiteNoise.buffer = noiseBuffer;
+      whiteNoise.loop = true;
+      
+      // Filter for rain sound
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 400;
+      
+      rainGain = audioCtx.createGain();
+      rainGain.gain.value = 0.08;
+      
+      whiteNoise.connect(filter);
+      filter.connect(rainGain);
+      rainGain.connect(audioCtx.destination);
+      whiteNoise.start();
+    }
+
+    function toggleMute() {
+      isMuted = !isMuted;
+      if (rainGain) {
+        rainGain.gain.value = isMuted ? 0 : 0.08;
+      }
+    }
 
     // ─── SCENE SETUP ───────────────────────────────────────────────────────
     const scene = new THREE.Scene();
@@ -217,15 +274,12 @@
     const neonColors = [NEON_CYAN, NEON_MAGENTA, NEON_YELLOW, NEON_PURPLE, NEON_ORANGE, NEON_GREEN];
 
     // ─── LIGHTING ───────────────────────────────────────────────────────────
-    // Ambient (very dark, moody)
     const ambientLight = new THREE.AmbientLight(0x0a0a1a, 0.4);
     scene.add(ambientLight);
 
-    // Hemisphere (sky/ground color blend)
     const hemiLight = new THREE.HemisphereLight(0x1a1a2a, 0x0a0a0f, 0.3);
     scene.add(hemiLight);
 
-    // Moon light (directional)
     const moonLight = new THREE.DirectionalLight(0x4455aa, 0.15);
     moonLight.position.set(-50, 150, 50);
     moonLight.castShadow = true;
@@ -269,6 +323,9 @@
       new THREE.MeshStandardMaterial({ color: 0x080810, roughness: 0.7, metalness: 0.3 }),
       new THREE.MeshStandardMaterial({ color: 0x10101a, roughness: 0.4, metalness: 0.6 }),
     ];
+
+    // Store blinkers for animation
+    const blinkers = [];
 
     function createBuilding(x, z) {
       const width = 8 + Math.random() * 28;
@@ -354,7 +411,6 @@
 
       // Rooftop elements
       if (Math.random() > 0.4) {
-        // Antenna
         const antColor = neonColors[Math.floor(Math.random() * neonColors.length)];
         const antGeom = new THREE.CylinderGeometry(0.08, 0.08, 6 + Math.random() * 6, 6);
         const antMat = new THREE.MeshStandardMaterial({ color: 0x222233, metalness: 0.8, roughness: 0.3 });
@@ -362,7 +418,6 @@
         antenna.position.set(x, height + 4, z);
         scene.add(antenna);
 
-        // Blinking light
         const lightGeom = new THREE.SphereGeometry(0.25, 8, 8);
         const lightMat = new THREE.MeshBasicMaterial({ color: antColor });
         const lightMesh = new THREE.Mesh(lightGeom, lightMat);
@@ -373,9 +428,13 @@
         pLight.position.set(x, height + 7.5, z);
         scene.add(pLight);
 
-        // Blink animation data
-        lightMesh.userData = { blinkSpeed: 0.5 + Math.random() * 2, blinkOffset: Math.random() * Math.PI * 2 };
-        lightMesh.userData.isBlinker = true;
+        blinkers.push({
+          mesh: lightMesh,
+          light: pLight,
+          blinkSpeed: 0.5 + Math.random() * 2,
+          blinkOffset: Math.random() * Math.PI * 2,
+          baseIntensity: 0.6
+        });
       }
 
       // AC units, boxes on roof
@@ -402,12 +461,12 @@
       createBuilding(Math.cos(angle) * radius, Math.sin(angle) * radius);
     }
 
-    // Central cluster (dense downtown)
+    // Central cluster
     for (let i = 0; i < 8; i++) {
       createBuilding((Math.random()-0.5) * 80, (Math.random()-0.5) * 80);
     }
 
-    // ─── NEON SIGNS (floating panels) ──────────────────────────────────────
+    // ─── NEON SIGNS ────────────────────────────────────────────────────────
     for (let i = 0; i < 40; i++) {
       const angle = Math.random() * Math.PI * 2;
       const radius = 40 + Math.random() * 180;
@@ -456,7 +515,7 @@
     const rain = new THREE.Points(rainGeometry, rainMaterial);
     scene.add(rain);
 
-    // ─── FOG PARTICLES (atmospheric) ───────────────────────────────────────
+    // ─── FOG PARTICLES ─────────────────────────────────────────────────────
     const fogParticleCount = 3000;
     const fogGeometry = new THREE.BufferGeometry();
     const fogPositions = new Float32Array(fogParticleCount * 3);
@@ -487,4 +546,332 @@
     const particleColors = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount; i++) {
-      particlePos
+      particlePositions[i * 3] = (Math.random() - 0.5) * 600;
+      particlePositions[i * 3 + 1] = Math.random() * 150;
+      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 600;
+
+      const color = new THREE.Color(neonColors[Math.floor(Math.random() * neonColors.length)]);
+      particleColors[i * 3] = color.r;
+      particleColors[i * 3 + 1] = color.g;
+      particleColors[i * 3 + 2] = color.b;
+    }
+
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+    const particleMaterial = new THREE.PointsMaterial({
+      size: 0.3,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending
+    });
+
+    const floatingParticles = new THREE.Points(particleGeometry, particleMaterial);
+    scene.add(floatingParticles);
+
+    // ─── PLAYER CONTROLLER ─────────────────────────────────────────────────
+    const player = {
+      position: new THREE.Vector3(0, 10, 50),
+      velocity: new THREE.Vector3(0, 0, 0),
+      rotation: new THREE.Euler(0, 0, 0, 'YXZ'),
+      onGround: false,
+      flyMode: false,
+      height: 3,
+      speed: 0.12,
+      sprintSpeed: 0.22,
+      jumpForce: 0.35,
+      gravity: 0.012,
+      flowState: 0,
+      lastMoveTime: Date.now(),
+      mouseX: 0,
+      mouseY: 0
+    };
+
+    const keys = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false,
+      sprint: false
+    };
+
+    let isLocked = false;
+    let lightningTimeout = null;
+
+    // ─── INPUT HANDLING ─────────────────────────────────────────────────────
+    document.getElementById('start-screen').addEventListener('click', () => {
+      initAudio();
+      renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isLocked = document.pointerLockElement === renderer.domElement;
+      document.getElementById('start-screen').classList.toggle('hidden', isLocked);
+      document.getElementById('hud').classList.toggle('visible', isLocked);
+      document.getElementById('coords').classList.toggle('visible', isLocked);
+      document.getElementById('title-overlay').classList.toggle('visible', isLocked);
+      document.getElementById('crosshair').classList.toggle('visible', isLocked);
+      document.getElementById('audio-indicator').classList.toggle('visible', isLocked);
+      document.getElementById('flow-bar').classList.toggle('visible', isLocked);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isLocked) return;
+      player.rotation.y -= e.movementX * 0.002;
+      player.rotation.x -= e.movementY * 0.002;
+      player.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.rotation.x));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      switch(e.code) {
+        case 'KeyW': keys.forward = true; break;
+        case 'KeyS': keys.backward = true; break;
+        case 'KeyA': keys.left = true; break;
+        case 'KeyD': keys.right = true; break;
+        case 'Space': keys.jump = true; e.preventDefault(); break;
+        case 'ShiftLeft': keys.sprint = true; break;
+        case 'KeyF': player.flyMode = !player.flyMode; break;
+        case 'KeyR': toggleRain(); break;
+        case 'KeyM': toggleMute(); break;
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      switch(e.code) {
+        case 'KeyW': keys.forward = false; break;
+        case 'KeyS': keys.backward = false; break;
+        case 'KeyA': keys.left = false; break;
+        case 'KeyD': keys.right = false; break;
+        case 'Space': keys.jump = false; break;
+        case 'ShiftLeft': keys.sprint = false; break;
+      }
+    });
+
+    // ─── RAIN TOGGLE ───────────────────────────────────────────────────────
+    function toggleRain() {
+      isRaining = !isRaining;
+      rain.visible = isRaining;
+      document.getElementById('weather-status').textContent = isRaining ? 'RAIN' : 'CLEAR';
+      if (rainGain) {
+        rainGain.gain.value = isMuted ? 0 : (isRaining ? 0.08 : 0);
+      }
+    }
+
+    // ─── COLLISION DETECTION ───────────────────────────────────────────────
+    function checkBuildingCollision(pos) {
+      const playerBox = new THREE.Box3(
+        new THREE.Vector3(pos.x - 1, pos.y - player.height, pos.z - 1),
+        new THREE.Vector3(pos.x + 1, pos.y + 2, pos.z + 1)
+      );
+
+      for (const b of buildings) {
+        const buildingBox = new THREE.Box3().setFromObject(b.mesh);
+        if (playerBox.intersectsBox(buildingBox)) {
+          return b;
+        }
+      }
+      return null;
+    }
+
+    // ─── UPDATE PLAYER ─────────────────────────────────────────────────────
+    function updatePlayer() {
+      if (!isLocked) return;
+
+      const moveSpeed = keys.sprint ? player.sprintSpeed : player.speed;
+      const forward = new THREE.Vector3(0, 0, -1);
+      const right = new THREE.Vector3(1, 0, 0);
+
+      // Apply yaw rotation
+      forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+      right.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+
+      // Calculate movement direction
+      const moveDir = new THREE.Vector3(0, 0, 0);
+      if (keys.forward) moveDir.add(forward);
+      if (keys.backward) moveDir.sub(forward);
+      if (keys.right) moveDir.add(right);
+      if (keys.left) moveDir.sub(right);
+
+      const isMoving = moveDir.length() > 0;
+      if (isMoving) moveDir.normalize();
+
+      // Apply movement
+      if (player.flyMode) {
+        // Fly mode
+        const flySpeed = moveSpeed * 2;
+        if (isMoving) {
+          player.position.x += moveDir.x * flySpeed;
+          player.position.z += moveDir.z * flySpeed;
+        }
+        if (keys.jump) player.position.y += flySpeed;
+        if (keys.sprint && !keys.jump) player.position.y -= flySpeed;
+      } else {
+        // Normal mode with gravity
+        if (isMoving) {
+          player.velocity.x = moveDir.x * moveSpeed;
+          player.velocity.z = moveDir.z * moveSpeed;
+        } else {
+          player.velocity.x *= 0.85;
+          player.velocity.z *= 0.85;
+        }
+        // Gravity
+        player.velocity.y -= player.gravity;
+
+        // Jump
+        if (keys.jump && player.onGround) {
+          player.velocity.y = player.jumpForce;
+          player.onGround = false;
+            }
+      // Apply velocity
+        player.position.x += player.velocity.x;
+        player.position.z += player.velocity.z;
+        player.position.y += player.velocity.y;
+
+        // Ground collision
+        if (player.position.y < 10) {
+          player.position.y = 10;
+          player.velocity.y = 0;
+          player.onGround = true;
+        }
+      }
+
+      // Building collision - simple push out
+      const collision = checkBuildingCollision(player.position);
+      if (collision) {
+        // Push player away from building center
+        const buildingPos = collision.mesh.position;
+        const dx = player.position.x - buildingPos.x;
+        const dz = player.position.z - buildingPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > 0) {
+          player.position.x += (dx / dist) * 0.5;
+          player.position.z += (dz / dist) * 0.5;
+        }
+      }
+
+      // Flow State
+      if (isMoving) {
+        player.flowState = Math.min(100, player.flowState + 0.5);
+        player.lastMoveTime = Date.now();
+      } else {
+        const timeSinceMove = Date.now() - player.lastMoveTime;
+        if (timeSinceMove > 500) {
+          player.flowState = Math.max(0, player.flowState - 0.3);
+        }
+      }
+
+      // Update camera
+      camera.position.copy(player.position);
+      camera.rotation.set(player.rotation.x, player.rotation.y, player.rotation.z, 'YXZ');
+    }
+// ─── UPDATE HUD ────────────────────────────────────────────────────────
+    function updateHUD() {
+      const vel = Math.sqrt(
+        player.velocity.x * player.velocity.x +
+        player.velocity.z * player.velocity.z
+      ) * 100;
+
+      document.getElementById('velocity').textContent = vel.toFixed(1);
+      document.getElementById('altitude').textContent = player.position.y.toFixed(1);
+      document.getElementById('flow-state').textContent = Math.floor(player.flowState) + '%';
+      document.getElementById('flow-fill').style.width = player.flowState + '%';
+
+      document.getElementById('coord-x').textContent = player.position.x.toFixed(2);
+      document.getElementById('coord-y').textContent = player.position.y.toFixed(2);
+      document.getElementById('coord-z').textContent = player.position.z.toFixed(2);
+    }
+
+    // ─── LIGHTNING SYSTEM ──────────────────────────────────────────────────
+    function triggerLightning() {
+      if (!isRaining) return;
+      
+      const lightning = document.getElementById('lightning');
+      lightning.classList.add('flash');
+      
+      // Add bright flash light
+      const flashLight = new THREE.PointLight(0xaaccff, 3, 500);
+      flashLight.position.set(
+        camera.position.x + (Math.random() - 0.5) * 100,
+        camera.position.y + 50,
+        camera.position.z + (Math.random() - 0.5) * 100
+      );
+      scene.add(flashLight);
+
+      setTimeout(() => {
+        lightning.classList.remove('flash');
+        scene.remove(flashLight);
+      }, 100);
+    }
+
+    // Random lightning
+    setInterval(() => {
+      if (isRaining && Math.random() > 0.7) {
+        triggerLightning();
+      }
+    }, 5000);
+
+    // ─── ANIMATION LOOP ────────────────────────────────────────────────────
+    let time = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.01;
+
+      // Update player
+      updatePlayer();
+      updateHUD();
+
+      // Animate rain
+      if (isRaining) {
+        const positions = rain.geometry.attributes.position.array;
+        for (let i = 0; i < rainCount; i++) {
+          positions[i * 3 + 1] -= rainVelocities[i];
+          if (positions[i * 3 + 1] < 0) {
+            positions[i * 3 + 1] = 200;
+            positions[i * 3] = player.position.x + (Math.random() - 0.5) * 400;
+            positions[i * 3 + 2] = player.position.z + (Math.random() - 0.5) * 400;
+          }
+        }
+        rain.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Animate blinkers
+      for (const blinker of blinkers) {
+        const blink = Math.sin(time * blinker.blinkSpeed + blinker.blinkOffset);
+        const intensity = blinker.baseIntensity * (blink > 0.3 ? 1 : 0.1);
+        blinker.light.intensity = intensity;
+        blinker.mesh.material.opacity = blink > 0.3 ? 1 : 0.2;
+      }
+
+      // Animate floating particles (subtle drift)
+      const pPositions = floatingParticles.geometry.attributes.position.array;
+      for (let i = 0; i < particleCount; i++) {
+        pPositions[i * 3 + 1] += Math.sin(time + i * 0.1) * 0.02;
+      }
+      floatingParticles.geometry.attributes.position.needsUpdate = true;
+
+      // Animate fog
+      fogParticles.position.x = Math.sin(time * 0.1) * 10;
+      fogParticles.position.z = Math.cos(time * 0.1) * 10;
+
+      renderer.render(scene, camera);
+    }
+
+    // ─── WINDOW RESIZE ─────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ─── START ─────────────────────────────────────────────────────────────
+    animate();
+    document.getElementById('loading').textContent = 'READY';
+    document.getElementById('loading').style.color = 'rgba(0, 240, 255, 0.4)';
+
+  </script>
+</body>
+</html>
+    
