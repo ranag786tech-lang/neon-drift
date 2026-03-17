@@ -1,35 +1,73 @@
-# NEON DRIFT 🏙️⚡
+# 🎮 NEON DRIFT
 
-![NEON DRIFT Logo](assets/images/logo.svg)
+*A gravity-defying action-adventure set in the vertical megacity of Neo Arcadia*
 
-**The city rises. So do you.**
-
-NEON DRIFT is a gravity-defying action-adventure set in Neo Arcadia — a vertical megacity where the rich float above the clouds and the rest drown in darkness.
+![NEON DRIFT Banner](assets/images/hero-bg.jpg)
 
 ---
 
-## 🎮 About The Game
+## 🌐 Live Demo
 
-You are Kai "Drift" Vara, a rogue courier with nothing to lose and everything to prove. Master the art of **Flow State** — a combat-traversal system where momentum is your weapon and every surface is your playground.
+**[Launch Landing Page](https://ranag786tech-lang.github.io/neon-drift/)**
 
-| Feature | Description |
-|---------|-------------|
-| **Flow State Combat** | Seamlessly blend parkour and combat into fluid system |
-| **Gravity Manipulation** | Wall-run, ceiling-walk, flip gravity itself |
-| **Core System** | 50+ modular abilities to customize playstyle |
-| **Vertical World** | 5 massive districts to explore |
-| **Multiplayer** | Race, co-op heists, arena survival |
+**[Play 3D Prototype](https://ranag786tech-lang.github.io/neon-drift/3d-prototype/)**
 
 ---
 
-## 🚀 Live Demos
+## 📋 Project Structure
 
-| Demo | Link |
-|------|------|
-| **Landing Page** | [neon-drift.vercel.app](https://neon-drift.vercel.app) |
-| **3D Prototype** | [neon-drift.vercel.app/3d-prototype](https://neon-drift.vercel.app/3d-prototype) |
+neon-drift/
+│
+├── 📄 index.html # Landing page
+├── 📄 README.md # This file
+│
+├── 🎮 3d-prototype/
+│ └── index.html # 3D city exploration prototype
+│
+├── 📁 design-docs/
+│ ├── game-design-document.md # Full GDD
+│ ├── art-brief.md # Character & world art guide
+│ └── marketing-copy.md # Taglines, Steam desc, trailer script
+│
+└── 📁 assets/
+└── images/ # Static assets
 
 ---
 
-## 📁 Repository Structure
+## 🕹️ 3D Prototype Controls
 
+| Key | Action |
+|-----|--------|
+| WASD | Move |
+| Mouse | Look around |
+| Space | Jump |
+| Shift | Sprint |
+| F | Toggle fly mode |
+| R | Toggle rain |
+| M | Mute audio |
+
+---
+
+## 🛠️ Built With
+
+- **HTML5** — Structure
+- **CSS3** — Styling & animations
+- **Three.js r128** — 3D rendering
+- **Vanilla JavaScript** — Game logic
+
+---
+
+## 📄 License
+
+This project is for educational and portfolio purposes.
+
+---
+
+## 👤 Developer
+
+**ranag786tech-lang**
+GitHub: [@ranag786tech-lang](https://github.com/ranag786tech-lang)
+
+---
+
+*"The city is your playground. The fall is your weapon."*
