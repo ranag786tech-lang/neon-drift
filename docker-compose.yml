@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------------------------
+  # 🧠 Core API Service (FastAPI)
+  # -----------------------------------------------------------
+  api-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: empowerment-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/empowerment_db
+      - MONGO_URL=mongodb://mongo:27017/empowerment_docs
+      - JWT_SECRET=super_secret_key_change_in_prod
+      - LOG_LEVEL=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+    networks:
+      - emp-network
+    restart: unless-stopped
+    command: uvicorn src.transparency-dashboard.api.api_endpoints:app --host 0.0.0.0 --port 8000 --reload
+
+  # -----------------------------------------------------------
+  # 🎨 React Frontend (Nginx)
+  # -----------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: empowerment-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-service
+    networks:
+      - emp-network
+    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # 🗄️ PostgreSQL Database (Structured Data)
+  # -----------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: empowerment-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: empowerment_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./src/transparency-dashboard/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - emp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d empowerment_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # 📄 MongoDB (Unstructured Docs & Logs)
+  # -----------------------------------------------------------
+  mongo:
+    image: mongo:7
+    container_name: empowerment-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - emp-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # 🕵️ Redis (Caching & Session Store)
+  # -----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: empowerment-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - emp-network
+    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # 📊 Prometheus (Metrics & Monitoring)
+  # -----------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: empowerment-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prom_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    networks:
+      - emp-network
+    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # 📈 Grafana (Visualization Dashboard)
+  # -----------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: empowerment-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - emp-network
+    restart: unless-stopped
+
+networks:
+  emp-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  mongodata:
+  prom_data:
+  grafana_data:
